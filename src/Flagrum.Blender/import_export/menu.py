@@ -10,11 +10,12 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 from mathutils import Matrix, Euler, Vector
 
 from .generate_armature import generate_armature
+from .generate_mesh import generate_mesh
 from .generate_terrain import generate_terrain
 from .gmdlimporter import GmdlImporter
 from .import_context import ImportContext
 from .interop import Interop
-from .pack_mesh import pack_mesh
+from .pack_mesh import FmdExporter
 from .read_armature_data import import_armature_data
 from ..entities import EnvironmentModelMetadata, Gpubin, TerrainMetadata, TerrainImportContext
 from ..helpers import draw_lines
@@ -52,12 +53,23 @@ class ImportOperator(Operator, ImportHelper):
     def execute(self, context):
         import_context = ImportContext(self.filepath, self.import_lods, self.import_vems)
 
-        armature_data = import_armature_data(import_context)
-        if armature_data is not None:
-            generate_armature(import_context, armature_data)
-
         importer = GmdlImporter(import_context)
-        importer.run()
+        importer.import_gfxbin()
+        importer.generate_bone_table()
+
+        if len(importer.bone_table) > 0 and import_context.amdl_path is None:
+            self.report({'ERROR'}, "Unable to import due to missing armature (amdl) file. Please ensure you have "
+                                   "the correct amdl file exported. If you have multiple amdl files in the same "
+                                   "folder, make sure that the name matches the model you are trying to import.")
+            return {'FINISHED'}
+
+        if len(importer.bone_table) > 0:
+            armature_data = import_armature_data(import_context)
+            if armature_data is not None:
+                generate_armature(import_context, armature_data)
+
+        importer.import_meshes()
+
         return {'FINISHED'}
 
 
@@ -84,8 +96,11 @@ class ExportOperator(Operator, ExportHelper):
         layout.prop(data=self, property="preserve_normals")
 
     def execute(self, context):
-        data = pack_mesh(self.preserve_normals)
-        Interop.export_mesh(self.filepath, data)
+        exporter = FmdExporter(self)
+        data = exporter.pack_mesh(self.preserve_normals)
+
+        if data is not None:
+            Interop.export_mesh(self.filepath, data)
 
         return {'FINISHED'}
 
@@ -105,7 +120,7 @@ class ImportEnvironmentOperator(Operator, ImportHelper):
         environment_path = self.filepath
         directory = os.path.dirname(environment_path)
         filename_without_extension = environment_path.split("\\")[-1].replace(".fed", "")
-        context = ImportContext(environment_path)
+        context = ImportContext(environment_path, False, False)
 
         import_file = open(environment_path, mode='r')
         import_data = import_file.read()

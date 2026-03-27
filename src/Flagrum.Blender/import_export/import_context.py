@@ -19,6 +19,7 @@ class ImportContext:
     texture_slots: dict[str, bool]
     base_directory: str
     base_uri: str
+    name_without_extension: str
 
     def __init__(self, gfxbin_file_path, import_lods, import_vems):
         self.gfxbin_path = gfxbin_file_path
@@ -28,12 +29,6 @@ class ImportContext:
         self.materials = {}
         self.texture_slots = {}
 
-        path_name = os.path.dirname(gfxbin_file_path)
-        p0 = os.path.split(path_name)
-        p1 = p0[0]
-        f_idx = p1.rfind("\\")
-        self.amdl_path = p1 + "\\" + p1[f_idx + 1:] + ".amdl"
-
         file_name = gfxbin_file_path.split("\\")[-1]
         group_name = ""
         for string in file_name.split("."):
@@ -42,7 +37,49 @@ class ImportContext:
                     group_name += "."
                 group_name += string
 
+        self.name_without_extension = group_name
         self.collection = bpy.data.collections.new(group_name)
+        self._set_amdl_path()
+
+    def _set_amdl_path(self):
+        # Check in the same folder as the model
+        folder = os.path.dirname(self.gfxbin_path)
+        self.amdl_path = self._find_amdl_in_folder(folder)
+        if self.amdl_path is None:
+            # Check up one folder from the model
+            up_folder = os.path.split(folder)[0]
+            self.amdl_path = self._find_amdl_in_folder(up_folder)
+            if self.amdl_path is None:
+                # Check in the common folder if it exists
+                common = up_folder + "\\common"
+                if os.path.exists(common):
+                    self.amdl_path = self._find_amdl_in_folder(common)
+
+    def _find_amdl_in_folder(self, folder: str) -> str:
+        result = None
+
+        file_count = 0
+        for file in os.listdir(folder):
+            if file.endswith(".amdl"):
+                file_count += 1
+                result = folder + "\\" + file
+
+        if file_count < 2:
+            return result
+
+        # There were multiple amdls, find one that matches the name of the model
+        names = [
+            self.name_without_extension,  # e.g. nh00_010
+            self.name_without_extension[:self.name_without_extension.find('_')]  # e.g. nh00
+        ]
+
+        for file in os.listdir(folder):
+            if file.endswith(".amdl"):
+                for name in names:
+                    if name in file:
+                        return folder + "\\" + file
+
+        return None
 
     def set_base_directory(self, header: GfxbinHeader):
         # Get the URI of the first gpubin
@@ -159,6 +196,29 @@ class ImportContext:
                         paths_checked.append(udim)
                         if os.path.exists(udim):
                             return udim
+
+        # Couldn't find the texture, check near the gmdl
+        directory = os.path.dirname(self.gfxbin_path)
+        file_name = uri[uri.rfind('/'):uri.rfind('.')]
+        highest = f"{directory}\\highimages\\{file_name}_$h"
+        high = f"{directory}\\sourceimages\\{file_name}_$h"
+        medium = f"{directory}\\sourceimages\\{file_name}_$m1"
+        low = f"{directory}\\sourceimages\\{file_name}"
+        paths = [highest, high, medium, low]
+
+        for i in range(len(paths)):
+            for j in range(len(extensions)):
+                with_extension = paths[i] + "." + extensions[j]
+                paths_checked.append(with_extension)
+
+                if os.path.exists(with_extension):
+                    return with_extension
+                else:
+                    name = paths[i].split('\\')[-1]
+                    udim = f"{paths[i]}\\{name}.1001.{extensions[j]}"
+                    paths_checked.append(udim)
+                    if os.path.exists(udim):
+                        return udim
 
         print("")
         print(f"[WARNING] Could not find texture for {uri} - checked:")

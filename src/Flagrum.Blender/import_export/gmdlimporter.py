@@ -8,28 +8,27 @@ from mathutils import Matrix, Vector
 
 from .gfxbin.gmdl.gmdl import Gmdl
 from .gfxbin.gmdl.gmdlmesh import GmdlMesh
-from .gfxbin.gmdl.gmdlvertexelementformat import ElementFormat
 from .gfxbin.msgpack_reader import MessagePackReader
 from .gmtlimporter import GmtlImporter
 from .import_context import ImportContext
+from .interop import Interop
 from ..utilities.timer import Timer
 
 
 @dataclass
 class GmdlImporter:
-    gpubins: dict[int, bytes]
     context: ImportContext
     game_model: Gmdl
     correction_matrix: Matrix
     bone_table: dict[int, str]
     timer: Timer
-    format_strings: dict[ElementFormat, str]
     lods: dict[float, Collection]
     has_vems: bool
     vems: Collection
+    buffer: bytes
+    buffer_offset: int
 
     def __init__(self, context):
-        self.gpubins = {}
         self.context = context
         self.correction_matrix = Matrix([
             [1, 0, 0],
@@ -37,34 +36,13 @@ class GmdlImporter:
             [0, 1, 0]
         ])
 
-        self.format_strings = {
-            ElementFormat.XYZ32_Float: "fff",
-            ElementFormat.XY16_SintN: "hh",
-            ElementFormat.XY16_UintN: "HH",
-            ElementFormat.XY16_Float: "f2f2",
-            ElementFormat.XYZW8_UintN: "BBBB",
-            ElementFormat.XYZW8_SintN: "bbbb",
-            ElementFormat.XYZW16_Uint: "HHHH",
-            ElementFormat.XYZW32_Uint: "IIII"
-        }
-
-    def run(self):
-        timer = Timer()
-        self.timer = Timer()
-        self._import_gfxbin()
-        self.timer.print("Importing gfxbin")
-        self.context.set_base_directory(self.game_model.header)
-        self._generate_bone_table()
-        self.timer.print("Generating bone table")
-        self._import_meshes()
-        timer.print("Overall import")
-
-    def _import_gfxbin(self):
+    def import_gfxbin(self):
         with open(self.context.gfxbin_path, mode="rb") as file:
             reader = MessagePackReader(file.read())
         self.game_model = Gmdl(reader)
+        self.context.set_base_directory(self.game_model.header)
 
-    def _generate_bone_table(self):
+    def generate_bone_table(self):
         self.bone_table = {}
         counter = 0
         if self.game_model.header.version >= 20220707:
@@ -72,10 +50,26 @@ class GmdlImporter:
                 self.bone_table[counter] = bone.name
                 counter += 1
         else:
+            max_count = 0
             for bone in self.game_model.bones:
-                self.bone_table[bone.unique_index] = bone.name
+                if bone.unique_index == 65535:
+                    max_count += 1
+                if max_count > 1:
+                    break
+            if max_count > 1:
+                for bone in self.game_model.bones:
+                    self.bone_table[counter] = bone.name
+                    counter += 1
+            else:
+                for bone in self.game_model.bones:
+                    if bone.unique_index == 65535:
+                        self.bone_table[0] = bone.name
+                    else:
+                        self.bone_table[bone.unique_index] = bone.name
 
-    def _import_meshes(self):
+    def import_meshes(self):
+        self.timer = Timer()
+
         if self.context.import_lods:
             self.lods = {}
             for mesh_object in self.game_model.mesh_objects:
@@ -99,6 +93,12 @@ class GmdlImporter:
                 self.vems = bpy.data.collections.new("VEMs")
                 self.context.collection.children.link(self.vems)
 
+        # Get the gpubin buffer
+        self.buffer_offset = 0
+        self.buffer = Interop.import_gpubin(self.context.gfxbin_path, self.context.import_lods,
+                                            self.context.import_vems)
+        self.timer.print("Loading GPUBIN data")
+
         for mesh_object in self.game_model.mesh_objects:
             for mesh in mesh_object.meshes:
                 self._import_mesh(mesh)
@@ -109,6 +109,7 @@ class GmdlImporter:
     def _import_mesh(self, mesh_data: GmdlMesh):
         context = self.context
         game_model = self.game_model
+        buffer = self.buffer
 
         # Skip LODs if setting is not checked
         if not context.import_lods and mesh_data.lod_near != 0:
@@ -120,25 +121,17 @@ class GmdlImporter:
 
         print("")
         print(f"Importing {mesh_data.name}...")
-        buffer = self._get_gpubin_buffer(mesh_data.gpubin_index)
 
         # Get face indices
-        if mesh_data.face_index_type == 0:
-            data_type = "<H"
-        else:
-            data_type = "<I"
-
-        face_indices = np.frombuffer(buffer, dtype=data_type, offset=mesh_data.face_index_offset,
-                                     count=mesh_data.face_index_count) \
+        face_indices = np.frombuffer(buffer, dtype="<I", offset=self.buffer_offset, count=mesh_data.face_index_count) \
             .reshape((int(mesh_data.face_index_count / 3), 3))
-
+        self.buffer_offset += mesh_data.face_index_count * 4
         self.timer.print("Reading face indices")
 
         # Reverse the winding order of the faces so the normals face the right direction
         faces = []
         for face in face_indices:
             faces.append([face[2], face[1], face[0]])
-
         self.timer.print("Unwinding triangles")
 
         # Get the vertex semantics
@@ -147,90 +140,53 @@ class GmdlImporter:
             for element in stream.elements:
                 semantics[element.semantic] = []
 
-        # Read the vertex streams
-        # for stream in mesh_data.vertex_streams:
-        #     format_string = "<"
-        # 
-        #     elements = []
-        #     current_index = 0
-        #     for element in stream.elements:
-        #         if element.format not in self.format_strings:
-        #             print(f"")
-        #             continue
-        # 
-        #         format_string += self.format_strings[element.format]
-        #         element_data_type = ElementFormat.get_data_type(element)
-        #         element_count = ElementFormat.get_count(element)
-        #         element_items = np.zeros((mesh_data.vertex_count, element_count), dtype=element_data_type)
-        #         elements.append((element_items, current_index, int(current_index + element_count)))
-        #         current_index += element_count
-        # 
-        #     base_offset = mesh_data.vertex_buffer_offset + stream.offset
-        #     elements_range = range(len(elements))
-        #     for i in range(mesh_data.vertex_count):
-        #         stream_offset = base_offset + (stream.stride * i)
-        #         for j in elements_range:
-        #             vertex_array = np.array(struct.unpack_from(format_string, buffer, stream_offset)).transpose()
-        #             elements[j][0][i] = np.column_stack(vertex_array[elements[j][1]:elements[j][2]])
-        # 
-        #     # current_index = 0
-        #     # for element in stream.elements:
-        #     #     element_count = ElementFormat.get_count(element)
-        #     #     print(f"[{current_index}:{(current_index + element_count)}]")
-        #     #     semantics[element.semantic] = np.column_stack(vertex_array[current_index:(current_index + element_count)])
-        #     #     current_index += element_count
-        # 
-        # print(semantics["POSITION0"])
-        # self.timer.print("Reading vertex streams")
-        # return
-
-        for stream in mesh_data.vertex_streams:
-            for element in stream.elements:
-                data_type = ElementFormat.get_data_type(element)
-                element_count = ElementFormat.get_count(element)
-
-                if data_type is None or element_count is None:
-                    continue
-
-                elements = np.zeros((mesh_data.vertex_count, element_count), dtype=data_type)
-                base_offset = mesh_data.vertex_buffer_offset + stream.offset + element.offset
+        # Populate the semantics with data from the buffer
+        for semantic in sorted(semantics.keys()):
+            if semantic == "POSITION0":
+                vertices = []
+                elements = np.frombuffer(buffer, dtype="<f", offset=self.buffer_offset,
+                                         count=mesh_data.vertex_count * 3) \
+                    .reshape((mesh_data.vertex_count, 3))
+                self.buffer_offset += mesh_data.vertex_count * 3 * 4
                 for i in range(mesh_data.vertex_count):
-                    element_offset = base_offset + stream.stride * i
-                    if element.format == ElementFormat.XYZ32_Float:
-                        elements[i] = self.correction_matrix @ Vector(
-                            np.frombuffer(buffer, dtype="<f", offset=element_offset, count=3))
-                    elif element.format == ElementFormat.XY16_SintN:
-                        elements[i] = np.frombuffer(buffer, dtype="<h", offset=element_offset, count=2).astype(
-                            np.float32) * (1 / 0x7FFF)
-                    elif element.format == ElementFormat.XY16_UintN:
-                        elements[i] = np.frombuffer(buffer, dtype="<H", offset=element_offset, count=2).astype(
-                            np.float32) / 0xFFFF
-                    elif element.format == ElementFormat.XY16_Float:
-                        elements[i] = np.frombuffer(buffer, dtype=np.float16, offset=element_offset, count=2)
-                    elif element.format == ElementFormat.XY32_Float:
-                        elements[i] = np.frombuffer(buffer, dtype="<f", offset=element_offset, count=2)
-                    elif element.format == ElementFormat.XYZW8_UintN:
-                        elements[i] = np.frombuffer(buffer, dtype="<B", offset=element_offset, count=4).astype(
-                            np.float32) / 0xFF
-                    elif element.format == ElementFormat.XYZW8_Uint:
-                        elements[i] = np.frombuffer(buffer, dtype="<B", offset=element_offset, count=4)
-                    elif element.format == ElementFormat.XYZW8_SintN:
-                        elements[i] = np.frombuffer(buffer, dtype="<b", offset=element_offset, count=4).astype(
-                            np.float32) * (1 / 0x7F)
-                    elif element.format == ElementFormat.XYZW8_Sint:
-                        elements[i] = np.frombuffer(buffer, dtype="<b", offset=element_offset, count=4)
-                    elif element.format == ElementFormat.XYZW16_Uint:
-                        elements[i] = np.frombuffer(buffer, dtype="<H", offset=element_offset, count=4)
-                    elif element.format == ElementFormat.XYZW32_Uint:
-                        elements[i] = np.frombuffer(buffer, dtype="<I", offset=element_offset, count=4)
-                semantics[element.semantic] = elements
+                    vertices.append(self.correction_matrix @ Vector(elements[i]))
+                semantics[semantic] = vertices
+            elif semantic == "NORMAL0":
+                elements = np.frombuffer(buffer, dtype="<f", offset=self.buffer_offset,
+                                         count=mesh_data.vertex_count * 3) \
+                    .reshape((mesh_data.vertex_count, 3))
+                self.buffer_offset += mesh_data.vertex_count * 3 * 4
+                semantics[semantic] = elements
+            elif semantic.startswith("TEXCOORD"):
+                elements = np.frombuffer(buffer, dtype="<f", offset=self.buffer_offset,
+                                         count=mesh_data.vertex_count * 2) \
+                    .reshape((mesh_data.vertex_count, 2))
+                self.buffer_offset += mesh_data.vertex_count * 2 * 4
+                semantics[semantic] = elements
+            elif semantic.startswith("COLOR"):
+                elements = np.frombuffer(buffer, dtype="<f", offset=self.buffer_offset,
+                                         count=mesh_data.vertex_count * 4) \
+                    .reshape((mesh_data.vertex_count, 4))
+                self.buffer_offset += mesh_data.vertex_count * 4 * 4
+                semantics[semantic] = elements
+            elif semantic.startswith("BLENDWEIGHT"):
+                elements = np.frombuffer(buffer, dtype="<f", offset=self.buffer_offset,
+                                         count=mesh_data.vertex_count * 4) \
+                    .reshape((mesh_data.vertex_count, 4))
+                self.buffer_offset += mesh_data.vertex_count * 4 * 4
+                semantics[semantic] = elements
+            elif semantic.startswith("BLENDINDICES"):
+                elements = np.frombuffer(buffer, dtype="<I", offset=self.buffer_offset,
+                                         count=mesh_data.vertex_count * 4) \
+                    .reshape((mesh_data.vertex_count, 4))
+                self.buffer_offset += mesh_data.vertex_count * 4 * 4
+                semantics[semantic] = elements
 
         self.timer.print("Reading vertex streams")
 
         # Create the mesh
         mesh = bpy.data.meshes.new(mesh_data.name)
         mesh.from_pydata(semantics["POSITION0"], [], faces)
-
         self.timer.print("Creating mesh")
 
         # Generate each of the UV Maps
@@ -417,18 +373,6 @@ class GmdlImporter:
             print(f"[ERROR] Failed to import GMTL data from {material_uri}")
 
         self.timer.print("Generating automatic materials")
-
-    def _get_gpubin_buffer(self, index: int) -> bytes:
-        if self.game_model.header.version < 20220707:
-            file_path = self.context.path_without_extension + ".gpubin"
-        else:
-            file_path = self.context.path_without_extension + "_" + str(index) + ".gpubin"
-
-        if index not in self.gpubins:
-            with open(file_path, mode="rb") as file:
-                self.gpubins[index] = file.read()
-
-        return self.gpubins[index]
 
     def _get_material_uri(self, uri_hash: int):
         return self.game_model.header.dependencies[str(uri_hash)]

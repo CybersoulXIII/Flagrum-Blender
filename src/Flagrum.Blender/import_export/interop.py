@@ -15,13 +15,15 @@ class Interop:
     def run_command(command):
         flagrum_path = join(dirname(__file__), "..", "lib", "Flagrum.Blender.exe")
         command = "\"" + flagrum_path + "\" " + command
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-        (output, err) = process.communicate()
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+        (output, error) = process.communicate()
         status = process.wait()
-        if output != b'':
-            print(output)
-        if err is not None:
-            print(err)
+
+        if error is not None and status != 0:
+            print(error.decode('UTF-8'))
+            raise RuntimeError("An exception occured during the operation of Flagrum.Blender.exe")
+        elif status == 0 and output != b'':
+            print(output.decode('UTF-8'))
 
     @staticmethod
     def import_material_inputs(gfxbin_path) -> dict[str, list[float]]:
@@ -37,6 +39,18 @@ class Interop:
         import_file.close()
         os.remove(tempfile_path)
         return data
+
+    @staticmethod
+    def import_gpubin(gfxbin_path: str, import_lods: bool, import_vems: bool) -> bytes:
+        tempfile_path = tempfile.NamedTemporaryFile().name + ".bin"
+        command = f"gpubin \"{gfxbin_path}\" \"{tempfile_path}\" {str(import_lods)} {str(import_vems)}"
+        Interop.run_command(command)
+
+        import_file = open(tempfile_path, mode='rb')
+        buffer = import_file.read()
+        import_file.close()
+        os.remove(tempfile_path)
+        return buffer
 
     @staticmethod
     def import_mesh(gfxbin_path):

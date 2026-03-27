@@ -115,7 +115,7 @@ class DeleteUnusedBonesOperator(Operator):
                              "R_UpperLeg", "R_Foreleg", "R_Foot", "R_Toe", "R_ToeEnd", "R_CalfB", "R_CalfF", "R_ankle",
                              "R_FemorisA", "R_FemorisAsub", "R_FemorisB", "R_FemorisC", "R_Knee", "C_HipW", "C_Spine1W",
                              "C_Spine1WEnd", "L_Hip", "L_Hipback", "L_HipSub", "R_Hip", "R_Hipback", "R_HipSub",
-                             "R_HipSubEnd", "c_BeltKdi"]
+                             "R_HipSubEnd", "c_BeltKdi", "L_UpperArm"]
 
         for mesh in meshes:
             groups = {i: False for i, k in enumerate(mesh.vertex_groups)}
