@@ -2,7 +2,7 @@
 import bpy
 import bpy.path
 from bpy.props import IntProperty, StringProperty, CollectionProperty
-from bpy.types import Panel, PropertyGroup, Operator, UIList, Mesh, MeshVertex, Attribute, AttributeGroup
+from bpy.types import Panel, PropertyGroup, Operator, UIList, Mesh, MeshVertex, Attribute
 
 
 class PartsVertex(PropertyGroup):
@@ -43,7 +43,7 @@ class RemovePartsGroupOperator(Operator):
     def execute(self, context):
         active_object = context.view_layer.objects.active
         parts: PartsSettings = active_object.flagrum_parts
-        attributes: AttributeGroup = active_object.data.attributes
+        attributes = active_object.data.attributes
         attributes.remove(attributes[parts.active_parts_group])
         return {'FINISHED'}
 

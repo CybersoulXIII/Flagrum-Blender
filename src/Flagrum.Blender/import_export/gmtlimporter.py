@@ -110,32 +110,32 @@ class GmtlImporter:
                     material.node_tree.links.new(bsdf.inputs['Normal'], norm_map.outputs['Normal'])
                     rgb = material.node_tree.nodes.new('ShaderNodeRGB')
                     rgb.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
-                    invert = material.node_tree.nodes.new('ShaderNodeInvert')
-                    separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateRGB')
-                    combine_rgb = material.node_tree.nodes.new('ShaderNodeCombineRGB')
-                    material.node_tree.links.new(separate_rgb.inputs['Image'], texture.outputs['Color'])
-                    material.node_tree.links.new(combine_rgb.inputs['R'], separate_rgb.outputs['R'])
-                    material.node_tree.links.new(combine_rgb.inputs['G'], separate_rgb.outputs['G'])
-                    material.node_tree.links.new(norm_map.inputs['Color'], combine_rgb.outputs['Image'])
+                    invert = material.node_tree.nodes.new('ShaderNodeInvertColor')
+                    separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateColor')
+                    combine_rgb = material.node_tree.nodes.new('ShaderNodeCombineColor')
+                    material.node_tree.links.new(separate_rgb.inputs['Color'], texture.outputs['Color'])
+                    material.node_tree.links.new(combine_rgb.inputs['Red'], separate_rgb.outputs['Red'])
+                    material.node_tree.links.new(combine_rgb.inputs['Green'], separate_rgb.outputs['Green'])
+                    material.node_tree.links.new(norm_map.inputs['Color'], combine_rgb.outputs['Color'])
                     material.node_tree.links.new(invert.inputs['Color'], texture.outputs['Alpha'])
-                    material.node_tree.links.new(bsdf.inputs['Transmission'], invert.outputs['Color'])
-                    material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['B'])
-                    material.node_tree.links.new(combine_rgb.inputs['B'], rgb.outputs['Color'])
+                    material.node_tree.links.new(bsdf.inputs['Transmission Weight'], invert.outputs['Color'])
+                    material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['Blue'])
+                    material.node_tree.links.new(combine_rgb.inputs['Blue'], rgb.outputs['Color'])
                 elif texture_metadata.name.endswith("_nro") or texture_metadata.name.endswith(
                         "_nro_$h"):
                     norm_map = material.node_tree.nodes.new('ShaderNodeNormalMap')
                     material.node_tree.links.new(bsdf.inputs['Normal'], norm_map.outputs['Normal'])
                     rgb = material.node_tree.nodes.new('ShaderNodeRGB')
                     rgb.outputs[0].default_value = (1.0, 1.0, 1.0, 1.0)
-                    separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateRGB')
-                    combine_rgb = material.node_tree.nodes.new('ShaderNodeCombineRGB')
-                    material.node_tree.links.new(separate_rgb.inputs['Image'], texture.outputs['Color'])
-                    material.node_tree.links.new(combine_rgb.inputs['R'], separate_rgb.outputs['R'])
-                    material.node_tree.links.new(combine_rgb.inputs['G'], separate_rgb.outputs['G'])
-                    material.node_tree.links.new(norm_map.inputs['Color'], combine_rgb.outputs['Image'])
+                    separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateColor')
+                    combine_rgb = material.node_tree.nodes.new('ShaderNodeCombineColor')
+                    material.node_tree.links.new(separate_rgb.inputs['Color'], texture.outputs['Color'])
+                    material.node_tree.links.new(combine_rgb.inputs['Red'], separate_rgb.outputs['Red'])
+                    material.node_tree.links.new(combine_rgb.inputs['Green'], separate_rgb.outputs['Green'])
+                    material.node_tree.links.new(norm_map.inputs['Color'], combine_rgb.outputs['Color'])
                     material.node_tree.links.new(multiply.inputs['Color2'], texture.outputs['Alpha'])
-                    material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['B'])
-                    material.node_tree.links.new(combine_rgb.inputs['B'], rgb.outputs['Color'])
+                    material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['Blue'])
+                    material.node_tree.links.new(combine_rgb.inputs['Blue'], rgb.outputs['Color'])
                 else:
                     normalise_group = self._setup_normalise_group()
                     normalise = material.node_tree.nodes.new('ShaderNodeGroup')
@@ -154,24 +154,25 @@ class GmtlImporter:
                 material.node_tree.links.new(bsdf.inputs['Roughness'], texture.outputs['Color'])
             elif "SPECULARTEXTURE0" in texture_slot:
                 texture.image.colorspace_settings.name = 'Non-Color'
-                material.node_tree.links.new(bsdf.inputs['Specular'], texture.outputs['Color'])
+                material.node_tree.links.new(bsdf.inputs['Specular IOR Level'], texture.outputs['Color'])
             elif "MRS0" in texture_slot or "MRSTEXTURE0" in texture_slot:
                 texture.image.colorspace_settings.name = 'Non-Color'
-                separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateRGB')
-                material.node_tree.links.new(separate_rgb.inputs['Image'], texture.outputs['Color'])
-                material.node_tree.links.new(bsdf.inputs['Metallic'], separate_rgb.outputs['R'])
-                material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['G'])
-                material.node_tree.links.new(bsdf.inputs['Specular'], separate_rgb.outputs['B'])
+                separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateColor')
+                material.node_tree.links.new(separate_rgb.inputs['Color'], texture.outputs['Color'])
+                material.node_tree.links.new(bsdf.inputs['Metallic'], separate_rgb.outputs['Red'])
+                material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['Green'])
+                material.node_tree.links.new(bsdf.inputs['Specular IOR Level'], separate_rgb.outputs['Blue'])
             elif "MRO_MIX0" in texture_slot:
                 texture.image.colorspace_settings.name = 'Non-Color'
-                separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateRGB')
-                material.node_tree.links.new(separate_rgb.inputs['Image'], texture.outputs['Color'])
-                material.node_tree.links.new(multiply.inputs['Color2'], separate_rgb.outputs['B'])
-                material.node_tree.links.new(bsdf.inputs['Metallic'], separate_rgb.outputs['R'])
-                material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['G'])
+                separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateColor')
+                material.node_tree.links.new(separate_rgb.inputs['Color'], texture.outputs['Color'])
+                material.node_tree.links.new(multiply.inputs['Color2'], separate_rgb.outputs['Blue'])
+                material.node_tree.links.new(bsdf.inputs['Metallic'], separate_rgb.outputs['Red'])
+                material.node_tree.links.new(bsdf.inputs['Roughness'], separate_rgb.outputs['Green'])
             elif "EMISSIVECOLOR0" in texture_slot or "EMISSIVE0" in texture_slot or "EMISSIVETEXTURE0" in texture_slot:
                 if not texture_metadata.uri.upper().endswith("WHITE.TGA"):
-                    material.node_tree.links.new(bsdf.inputs['Emission'], texture.outputs['Color'])
+                    material.node_tree.links.new(bsdf.inputs['Emission Color'], texture.outputs['Color'])
+                    bsdf.inputs['Emission Strength'].default_value = 1.0
             elif "TRANSPARENCY0" in texture_slot or "OPACITYMASK0" in texture_slot or "OPACITYMASKTEXTURE0" in texture_slot or "TRANSPARENCYTEXTURE0" in texture_slot:
                 texture.image.colorspace_settings.name = 'Non-Color'
                 material.node_tree.links.new(bsdf.inputs['Alpha'], texture.outputs['Color'])
@@ -188,10 +189,10 @@ class GmtlImporter:
             elif "AOTO0" in texture_slot:
                 material.blend_method = 'CLIP'
                 texture.image.colorspace_settings.name = 'Non-Color'
-                aoto_separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateRGB')
-                material.node_tree.links.new(aoto_separate_rgb.inputs['Image'], texture.outputs['Color'])
-                material.node_tree.links.new(bsdf.inputs['Alpha'], aoto_separate_rgb.outputs['R'])
-                material.node_tree.links.new(multiply.inputs['Color2'], aoto_separate_rgb.outputs['G'])
+                aoto_separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateColor')
+                material.node_tree.links.new(aoto_separate_rgb.inputs['Color'], texture.outputs['Color'])
+                material.node_tree.links.new(bsdf.inputs['Alpha'], aoto_separate_rgb.outputs['Red'])
+                material.node_tree.links.new(multiply.inputs['Color2'], aoto_separate_rgb.outputs['Green'])
             elif "NOTO0" in texture_slot:
                 # Handle occlusion portion
                 texture.image.colorspace_settings.name = 'Non-Color'
@@ -202,9 +203,9 @@ class GmtlImporter:
                     uv_map.uv_map = "map1"
                 material.node_tree.links.new(texture.inputs['Vector'], uv_map.outputs['UV'])
 
-                separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateRGB')
-                material.node_tree.links.new(separate_rgb.inputs['Image'], texture.outputs['Color'])
-                material.node_tree.links.new(multiply.inputs['Color2'], separate_rgb.outputs['B'])
+                separate_rgb = material.node_tree.nodes.new('ShaderNodeSeparateColor')
+                material.node_tree.links.new(separate_rgb.inputs['Color'], texture.outputs['Color'])
+                material.node_tree.links.new(multiply.inputs['Color2'], separate_rgb.outputs['Blue'])
 
                 # Handle other channels
                 texture = material.node_tree.nodes.new('ShaderNodeTexImage')
@@ -248,7 +249,7 @@ class GmtlImporter:
                 self.context.texture_slots[texture_slot] = True
 
         if co_texture is not None and aoto_separate_rgb is not None:
-            material.node_tree.links.new(co_texture.inputs['Vector'], aoto_separate_rgb.outputs['B'])
+            material.node_tree.links.new(co_texture.inputs['Vector'], aoto_separate_rgb.outputs['Blue'])
 
         if noto_texture is not None and co_texture is not None:
             material.node_tree.links.new(co_texture.inputs['Vector'], noto_texture.outputs['Alpha'])
@@ -263,14 +264,14 @@ class GmtlImporter:
             return group
 
         group = bpy.data.node_groups.new(name, 'ShaderNodeTree')
+        group.interface.new_socket(name='Color', in_out='INPUT', socket_type='NodeSocketColor')
+        group.interface.new_socket(name='Normal', in_out='OUTPUT', socket_type='NodeSocketVector')
         group_inputs = group.nodes.new('NodeGroupInput')
-        group.inputs.new('NodeSocketColor', "Color")
 
         group_outputs = group.nodes.new('NodeGroupOutput')
-        group.outputs.new('NodeSocketVector', "Normal")
 
-        separate_rgb = group.nodes.new('ShaderNodeSeparateRGB')
-        combine_rgb = group.nodes.new('ShaderNodeCombineRGB')
+        separate_rgb = group.nodes.new('ShaderNodeSeparateColor')
+        combine_rgb = group.nodes.new('ShaderNodeCombineColor')
         less_than = group.nodes.new('ShaderNodeMath')
         less_than.operation = 'LESS_THAN'
         less_than.inputs[1].default_value = 0.01
@@ -278,14 +279,15 @@ class GmtlImporter:
         maximum.operation = 'MAXIMUM'
         normal_map = group.nodes.new('ShaderNodeNormalMap')
 
-        group.links.new(separate_rgb.inputs['Image'], group_inputs.outputs['Color'])
-        group.links.new(combine_rgb.inputs['R'], separate_rgb.outputs['R'])
-        group.links.new(combine_rgb.inputs['G'], separate_rgb.outputs['G'])
-        group.links.new(normal_map.inputs['Color'], combine_rgb.outputs['Image'])
-        group.links.new(less_than.inputs[0], separate_rgb.outputs['B'])
-        group.links.new(maximum.inputs[0], separate_rgb.outputs['B'])
+        
+        group.links.new(separate_rgb.inputs['Color'], group_inputs.outputs['Color'])
+        group.links.new(combine_rgb.inputs['Red'], separate_rgb.outputs['Red'])
+        group.links.new(combine_rgb.inputs['Green'], separate_rgb.outputs['Green'])
+        group.links.new(normal_map.inputs['Color'], combine_rgb.outputs['Color'])
+        group.links.new(less_than.inputs[0], separate_rgb.outputs['Blue'])
+        group.links.new(maximum.inputs[0], separate_rgb.outputs['Blue'])
         group.links.new(maximum.inputs[1], less_than.outputs['Value'])
-        group.links.new(combine_rgb.inputs['B'], maximum.outputs['Value'])
+        group.links.new(combine_rgb.inputs['Blue'], maximum.outputs['Value'])
         group.links.new(group_outputs.inputs['Normal'], normal_map.outputs['Normal'])
 
         return group
@@ -298,21 +300,20 @@ class GmtlImporter:
             return group
 
         group = bpy.data.node_groups.new(name, 'ShaderNodeTree')
+        group.interface.new_socket(name='Color', in_out='INPUT', socket_type='NodeSocketColor')
+        group.interface.new_socket(name='Normal', in_out='OUTPUT', socket_type='NodeSocketVector')
         group_inputs = group.nodes.new('NodeGroupInput')
-        group.inputs.new('NodeSocketColor', "Color")
-
         group_outputs = group.nodes.new('NodeGroupOutput')
-        group.outputs.new('NodeSocketVector', "Normal")
 
-        separate_rgb = group.nodes.new('ShaderNodeSeparateRGB')
-        combine_rgb = group.nodes.new('ShaderNodeCombineRGB')
+        separate_rgb = group.nodes.new('ShaderNodeSeparateColor')
+        combine_rgb = group.nodes.new('ShaderNodeCombineColor')
         combine_rgb.inputs[2].default_value = 1.0
         normal_map = group.nodes.new('ShaderNodeNormalMap')
 
-        group.links.new(separate_rgb.inputs['Image'], group_inputs.outputs['Color'])
-        group.links.new(combine_rgb.inputs['R'], separate_rgb.outputs['R'])
-        group.links.new(combine_rgb.inputs['G'], separate_rgb.outputs['G'])
-        group.links.new(normal_map.inputs['Color'], combine_rgb.outputs['Image'])
+        group.links.new(separate_rgb.inputs['Color'], group_inputs.outputs['Color'])
+        group.links.new(combine_rgb.inputs['Red'], separate_rgb.outputs['Red'])
+        group.links.new(combine_rgb.inputs['Green'], separate_rgb.outputs['Green'])
+        group.links.new(normal_map.inputs['Color'], combine_rgb.outputs['Color'])
         group.links.new(group_outputs.inputs['Normal'], normal_map.outputs['Normal'])
 
         return group

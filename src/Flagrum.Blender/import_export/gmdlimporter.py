@@ -312,7 +312,8 @@ class GmdlImporter:
             normals.append(result)
 
         mesh.normals_split_custom_set_from_vertices(normals)
-        mesh.use_auto_smooth = True
+        if bpy.app.version < ( 4, 1, 0 ):
+            mesh.use_auto_smooth = True
 
         self.timer.print("Generating custom normals")
 

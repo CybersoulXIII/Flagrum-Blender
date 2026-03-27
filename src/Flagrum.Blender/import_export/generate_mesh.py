@@ -132,7 +132,8 @@ def generate_mesh(context: ImportContext, collection: Collection, mesh_data: Mes
         normals.append(result)
 
     mesh.normals_split_custom_set_from_vertices(normals)
-    mesh.use_auto_smooth = True
+    if bpy.app.version < ( 4, 1, 0 ):
+        mesh.use_auto_smooth = True
 
     layer = bpy.context.view_layer
     layer.update()

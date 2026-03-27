@@ -5,8 +5,8 @@
 Enables importing of FFXV models, environments, and terrain into Blender—as well as exporting of outfit mods to Flagrum's model pack format.
 
 > [!WARNING]  
-> Flagrum-Blender does not work in newer versions of Blender due to breaking changes in Blender's API.  
-> **Please use Blender 3.0 for best results.**
+> Flagrum-Blender does not work in older versions of Blender due to breaking changes in Blender's API.  
+> **Please use Blender 5.0 for best results.**
 
 ## Installation
 

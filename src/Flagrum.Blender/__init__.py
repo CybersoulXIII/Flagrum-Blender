@@ -20,11 +20,12 @@ from .panel.rendering_panel import ToggleEmissionOperator, RenderingPanel, SetEm
 
 bl_info = {
     "name": "Flagrum",
-    "version": (1, 3, 3),
-    "blender": (3, 0, 0),
+    "version": (1, 3, 4),
+    "blender": (5, 0, 0),
     "location": "File > Import-Export",
     "description": "Blender add-on for Flagrum",
     "category": "Import-Export",
+    'author': "Kizari"
 }
 
 
